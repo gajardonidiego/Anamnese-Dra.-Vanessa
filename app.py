@@ -3,6 +3,7 @@ import sqlite3
 import pandas as pd
 from datetime import datetime
 import re
+import time
 from fpdf import FPDF
 
 # Configuração da Página
@@ -43,11 +44,9 @@ def gerar_pdf(paciente):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
-    # Tratamento de caracteres em português para o PDF
     def c(text):
         return str(text).encode('latin-1', 'replace').decode('latin-1')
         
-    # Cabeçalho Físico
     pdf.set_font("Arial", 'B', 14)
     pdf.cell(0, 8, txt=c("CONSULTÓRIO ODONTOLÓGICO GUARARAPES"), ln=True, align='C')
     pdf.set_font("Arial", 'B', 10)
@@ -355,7 +354,12 @@ if not is_admin:
             st.balloons()
 
 else:
-    # --- ÁREA DO MÉDICO (NOVA ESTRUTURA) ---
+    # --- ÁREA DO MÉDICO ---
+    
+    # Controle de Sessão para Login
+    if 'autenticado' not in st.session_state:
+        st.session_state.autenticado = False
+
     st.markdown('''
         <div class="header-box">
             <div class="header-title">PAINEL CLÍNICO</div>
@@ -363,25 +367,45 @@ else:
         </div>
     ''', unsafe_allow_html=True)
     
-    senha = st.text_input("Senha de Acesso:", type="password")
-    
-    if senha == "vanessa2026":
-        st.success("Acesso Autorizado - Dra. Vanessa")
-        
+    if not st.session_state.autenticado:
+        # Formulário de Login Seguro e Visível
+        with st.form("login_form"):
+            st.markdown("### 🔒 Acesso Restrito")
+            senha = st.text_input("Senha de Acesso:", type="password", placeholder="Digite a senha do painel...")
+            submit_login = st.form_submit_button("Entrar no Painel", type="primary", use_container_width=True)
+            
+            if submit_login:
+                if senha == "vanessa2026":
+                    st.session_state.autenticado = True
+                    st.rerun()
+                else:
+                    st.error("❌ Senha incorreta.")
+    else:
+        # Sistema Logado
+        col1, col2 = st.columns([0.8, 0.2])
+        with col1:
+            st.success("✅ Acesso Autorizado - Dra. Vanessa")
+        with col2:
+            if st.button("Sair (Logout)"):
+                st.session_state.autenticado = False
+                st.rerun()
+                
         try:
-            df = pd.read_sql_query("SELECT * FROM fichas_completas_v2 ORDER BY rowid DESC", conn)
+            # Busca do Banco de Dados com o ID da linha (rowid) necessário para a exclusão
+            df = pd.read_sql_query("SELECT rowid, * FROM fichas_completas_v2 ORDER BY rowid DESC", conn)
             
             if not df.empty:
-                # Caixa de Seleção Dinâmica
                 lista_opcoes = ["📊 Visualizar Tabela Completa"] + [f"{row['Nome']} (Enviado em: {row['Data_Envio']})" for index, row in df.iterrows()]
                 selecao = st.selectbox("Selecione uma opção:", lista_opcoes)
                 
                 if selecao == "📊 Visualizar Tabela Completa":
-                    st.write(f"**Total de pacientes registrados:** {len(df)}")
-                    st.dataframe(df, use_container_width=True)
+                    # Remove a coluna técnica rowid da visualização e do Excel
+                    df_display = df.drop(columns=['rowid'])
                     
-                    # Correção do Excel: Formato pt-BR com separador ';' e codificação utf-8-sig
-                    csv = df.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
+                    st.write(f"**Total de pacientes registrados:** {len(df_display)}")
+                    st.dataframe(df_display, use_container_width=True)
+                    
+                    csv = df_display.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
                     st.download_button(
                         label="📥 Baixar Planilha Excel Correta (CSV)",
                         data=csv,
@@ -390,7 +414,7 @@ else:
                         use_container_width=True
                     )
                 else:
-                    # Paciente Específico Selecionado
+                    # Paciente Selecionado
                     indice_paciente = lista_opcoes.index(selecao) - 1
                     paciente_dados = df.iloc[indice_paciente]
                     
@@ -398,7 +422,7 @@ else:
                     st.write(f"**Ficha selecionada:** {paciente_dados['Nome']}")
                     st.write(f"**Motivo da Consulta:** {paciente_dados['Motivo_Consulta']}")
                     
-                    # Botão para gerar o PDF
+                    # Gerador de PDF
                     pdf_bytes = gerar_pdf(paciente_dados)
                     st.download_button(
                         label=f"📄 Gerar e Baixar PDF de {paciente_dados['Nome']}",
@@ -408,10 +432,32 @@ else:
                         type="primary",
                         use_container_width=True
                     )
+                    
+                    st.markdown("---")
+                    # Sistema de Exclusão Segura
+                    with st.expander("🗑️ Excluir Ficha (Ação Irreversível)"):
+                        st.warning(f"Você está prestes a excluir permanentemente a ficha de **{paciente_dados['Nome']}**.")
+                        
+                        with st.form("form_exclusao"):
+                            senha_exclusao = st.text_input("Confirme a senha do painel:", type="password")
+                            palavra_exclusao = st.text_input("Digite a palavra EXCLUIR para autorizar:", placeholder="EXCLUIR")
+                            
+                            btn_excluir = st.form_submit_button("Confirmar Exclusão Permanente", use_container_width=True)
+                            
+                            if btn_excluir:
+                                if senha_exclusao == "vanessa2026" and palavra_exclusao == "EXCLUIR":
+                                    cursor = conn.cursor()
+                                    # Executa a exclusão pelo ID único gerado no SQLite
+                                    cursor.execute("DELETE FROM fichas_completas_v2 WHERE rowid = ?", (int(paciente_dados['rowid']),))
+                                    conn.commit()
+                                    
+                                    st.success("✅ Ficha excluída com sucesso! Atualizando painel...")
+                                    time.sleep(2)
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Erro: Senha incorreta ou palavra de segurança inválida (digite EXCLUIR em maiúsculas).")
+                                    
             else:
                 st.info("Nenhuma ficha registrada ainda.")
         except Exception as e:
             st.info("O banco de dados está vazio. Aguardando o primeiro preenchimento da nova versão.")
-            
-    elif senha:
-        st.error("Senha incorreta.")
