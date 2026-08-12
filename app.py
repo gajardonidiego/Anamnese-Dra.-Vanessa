@@ -2,66 +2,49 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import datetime
+import re
 
 # Configuração da Página
 st.set_page_config(page_title="Ficha de Anamnese - Dra. Vanessa Mendonça", page_icon="🦷", layout="centered")
 
-# Estilos Personalizados (Azul, Dourado e Cinza)
+# Estilos Personalizados (Azul, Dourado e Cinza) + Botão Destacado
 st.markdown("""
     <style>
-        /* Cores da Identidade Visual */
-        :root {
-            --azul: #1B365D;
-            --dourado: #D4AF37;
-            --cinza: #F0F2F5;
-        }
+        :root { --azul: #1B365D; --dourado: #D4AF37; --cinza: #F0F2F5; }
+        .stApp { background-color: var(--cinza); }
+        h1, h2, h3, h4, h5, h6, p, label { color: var(--azul) !important; }
         
-        .stApp {
-            background-color: var(--cinza);
-        }
+        /* Estilo para Botões Secundários */
+        .stButton>button { border-radius: 8px; transition: all 0.3s; }
         
-        h1, h2, h3, h4, h5, h6, p, label {
+        /* SUPER DESTAQUE PARA O BOTÃO PRINCIPAL DE ENVIAR */
+        .stButton > button[kind="primary"] {
+            background-color: var(--dourado) !important;
             color: var(--azul) !important;
+            font-size: 20px !important;
+            font-weight: 900 !important;
+            padding: 25px !important;
+            border-radius: 12px !important;
+            border: 2px solid var(--azul) !important;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.2) !important;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .stButton > button[kind="primary"]:hover {
+            background-color: #E6C657 !important; /* Dourado mais claro */
+            transform: scale(1.02);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3) !important;
         }
         
-        .stButton>button {
-            background-color: var(--azul);
-            color: var(--dourado);
-            border: 2px solid var(--dourado);
-            border-radius: 8px;
-            font-weight: bold;
-            transition: all 0.3s;
-        }
-        
-        .stButton>button:hover {
-            background-color: var(--dourado);
-            color: var(--azul);
-            border: 2px solid var(--azul);
-        }
-        
-        .header-box {
-            background-color: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            text-align: center;
-            border-top: 5px solid var(--dourado);
-            margin-bottom: 30px;
-        }
-        
-        .header-title {
-            color: var(--azul);
-            font-size: 24px;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        
-        .header-subtitle {
-            color: #555;
-            font-size: 16px;
-        }
+        .header-box { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; border-top: 5px solid var(--dourado); margin-bottom: 30px; }
+        .header-title { color: var(--azul); font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+        .header-subtitle { color: #555; font-size: 16px; }
     </style>
 """, unsafe_allow_html=True)
+
+# Função para limpar caracteres e deixar só números
+def limpa_numeros(texto):
+    return re.sub(r'\D', '', texto)
 
 # Inicialização do Banco de Dados
 @st.cache_resource
@@ -69,15 +52,11 @@ def get_db_connection():
     return sqlite3.connect('anamnese_guararapes.db', check_same_thread=False)
 
 conn = get_db_connection()
-
-# Roteamento via URL
 query_params = st.query_params
 is_admin = query_params.get("admin", "") == "true"
 
 if not is_admin:
     # --- ÁREA DO PACIENTE ---
-    
-    # Cabeçalho Personalizado
     st.markdown('''
         <div class="header-box">
             <div class="header-title">CONSULTÓRIO ODONTOLÓGICO GUARARAPES</div>
@@ -93,19 +72,24 @@ if not is_admin:
         st.subheader("1. IDENTIFICAÇÃO DO PACIENTE")
         nome = st.text_input("Nome completo *")
         
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            data_nasc = st.date_input("Data de nascimento", format="DD/MM/YYYY")
-        with col2:
-            idade = st.number_input("Idade *", min_value=0, max_value=120)
-        with col3:
-            telefone = st.text_input("Telefone *")
+        col1, col2 = st.columns(2)
+        with col1: 
+            # Calendário desde 1900 até hoje
+            hoje = datetime.today()
+            data_nasc = st.date_input("Data de nascimento *", min_value=datetime(1900, 1, 1), max_value=hoje, format="DD/MM/YYYY")
+            
+            # Cálculo automático de Idade
+            idade_calc = hoje.year - data_nasc.year - ((hoje.month, hoje.day) < (data_nasc.month, data_nasc.day))
+            st.info(f"Idade calculada: **{idade_calc} anos**")
+            
+        with col2: 
+            telefone = st.text_input("Telefone (com DDD) *", placeholder="Ex: 11999999999")
             
         col4, col5 = st.columns(2)
-        with col4:
-            cpf = st.text_input("CPF *")
-        with col5:
-            rg = st.text_input("RG")
+        with col4: 
+            cpf = st.text_input("CPF (Apenas números) *", placeholder="Ex: 12345678900")
+        with col5: 
+            rg = st.text_input("RG (Apenas números)", placeholder="Ex: 123456789")
             
         endereco = st.text_input("Endereço completo")
         
@@ -135,7 +119,6 @@ if not is_admin:
         st.markdown("---")
         st.subheader("5. HISTÓRICO DE SAÚDE")
         st.write("Você tem ou já teve:")
-        
         doencas = []
         if st.checkbox("Febre reumática ou doença cardíaca reumática"): doencas.append("Febre Reumática")
         if st.checkbox("Anormalidades cardíacas congênitas"): doencas.append("Anormalidade Cardíaca")
@@ -149,7 +132,6 @@ if not is_admin:
         if st.checkbox("Úlcera estomacal"): doencas.append("Úlcera")
         if st.checkbox("Tuberculose"): doencas.append("Tuberculose")
         if st.checkbox("HIV/AIDS"): doencas.append("HIV/AIDS")
-        
         hist_detalhe = st.text_area("Se marcou algum item acima, especifique detalhes:")
         
         st.markdown("---")
@@ -184,7 +166,8 @@ if not is_admin:
         
         st.markdown("---")
         st.subheader("10. PARA PACIENTES DO SEXO FEMININO")
-        sexo = st.radio("Sexo biológico", ["Masculino", "Feminino"])
+        # Deixado como None para forçar a escolha e abrir o menu correto
+        sexo = st.radio("Sexo biológico *", ["Masculino", "Feminino"], index=None)
         
         anticoncepcional = "N/A"
         gravida = "N/A"
@@ -207,42 +190,80 @@ if not is_admin:
         resp_legal = st.text_input("Nome do Responsável Legal (apenas se paciente for menor/incapaz)")
         cpf_resp = st.text_input("CPF do Responsável")
         
-        submit = st.form_submit_button("Assinar e Enviar Ficha de Anamnese", use_container_width=True)
+        # Botão com tipo "primary" para acionar o visual destacado no CSS
+        submit = st.form_submit_button("Assinar e Enviar Ficha de Anamnese", type="primary", use_container_width=True)
         
         if submit:
-            if not nome.strip() or not telefone.strip() or not cpf.strip() or not motivo.strip():
-                st.error("⚠️ Preencha os campos obrigatórios (Nome, Telefone, CPF e Motivo da Consulta).")
+            # Limpa números dos campos de validação
+            cpf_limpo = limpa_numeros(cpf)
+            telefone_limpo = limpa_numeros(telefone)
+            rg_limpo = limpa_numeros(rg)
+            
+            # Validações rígidas
+            if not nome.strip() or not telefone_limpo or not cpf_limpo or not motivo.strip() or not sexo:
+                st.error("⚠️ Preencha os campos obrigatórios (Nome, Telefone, CPF, Motivo e Sexo).")
+            elif len(cpf_limpo) != 11:
+                st.error("⚠️ O CPF digitado é inválido. Por favor, digite os 11 números corretamente.")
+            elif len(telefone_limpo) < 10 or len(telefone_limpo) > 11:
+                st.error("⚠️ O Telefone digitado é inválido. Digite o DDD + Número.")
+            elif rg.strip() and len(rg_limpo) < 5:
+                st.error("⚠️ O RG digitado parece inválido. Digite apenas números.")
             elif not aceite:
                 st.error("⚠️ Você deve concordar com a Declaração de Responsabilidade para enviar a ficha.")
             else:
-                # Preparar dados para o banco
+                # Salvar no BD
                 dados = {
                     "Data_Envio": datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "Nome": nome,
                     "Data_Nascimento": str(data_nasc),
-                    "Idade": idade,
-                    "Telefone": telefone,
-                    "CPF": cpf,
-                    "RG": rg,
+                    "Idade": idade_calc,
+                    "Telefone": telefone_limpo,
+                    "CPF": cpf_limpo,
+                    "RG": rg_limpo,
                     "Endereco": endereco,
-                    "Motivo": motivo,
-                    "Tratamento_Medico": tratamento_medico,
-                    "Condicao_Tratada": condicao_tratada,
-                    "Medico_Resp": medico,
+                    "Motivo_Consulta": motivo,
+                    "Tratamento_Medico_Atual": tratamento_medico,
+                    "Condicao_Sendo_Tratada": condicao_tratada,
+                    "Medico_e_Telefone": medico,
+                    "Ultimo_Exame_Medico": ult_exame,
+                    "Ultimo_Dentista": ult_dentista,
                     "Range_Dentes": range_dentes,
+                    "Aperta_Dentes": aperta_dentes,
+                    "Dificuldade_Abrir_Boca": dif_abrir_boca,
                     "Fuma": fuma,
                     "Bebe": bebe,
-                    "Doencas_Previas": ", ".join(doencas),
-                    "Medicamentos": medicamentos_quais if uso_medicamento == "Sim" else "Nenhum",
-                    "Alergias_Med": alergia_med_qual if alergia_med == "Sim" else "Nenhuma",
-                    "Cirurgias": cirurgia_qual if cirurgia == "Sim" else "Nenhuma",
-                    "Sexo": sexo,
-                    "Gestante": gravida,
-                    "Responsavel": resp_legal
+                    "Doencas_Previas": ", ".join(doencas) if doencas else "Nenhuma",
+                    "Detalhes_Doencas": hist_detalhe,
+                    "Usa_Medicamentos": uso_medicamento,
+                    "Quais_Medicamentos": medicamentos_quais,
+                    "Sangramento_Anormal": sangramento,
+                    "Hematomas_Frequentes": hematomas,
+                    "Transfusao_Sanguinea": transfusao,
+                    "Reacao_Anestesico": reacao_anestesia,
+                    "Problema_Odonto_Anterior": problema_odonto,
+                    "Detalhe_Problema_Odonto": problema_odonto_detalhe,
+                    "Alergia_Medicamentos": alergia_med,
+                    "Qual_Alergia_Med": alergia_med_qual,
+                    "Outra_Alergia": alergia_outra,
+                    "Qual_Outra_Alergia": alergia_outra_qual,
+                    "Tipo_Sanguineo": tipo_sang,
+                    "Hospitalizado_5_Anos": hospitalizado,
+                    "Motivo_Hospitalizacao": hosp_motivo,
+                    "Cirurgia_Importante": cirurgia,
+                    "Qual_Cirurgia": cirurgia_qual,
+                    "Outras_Condicoes_Saude": outra_condicao,
+                    "Sexo_Biologico": sexo,
+                    "Toma_Anticoncepcional": anticoncepcional,
+                    "Gravida": gravida,
+                    "Amamentando": amamentando,
+                    "Menopausa": menopausa,
+                    "Acompanhamento_Gineco": gineco,
+                    "Responsavel_Legal": resp_legal,
+                    "CPF_Responsavel": limpa_numeros(cpf_resp)
                 }
                 
                 df_novo = pd.DataFrame([dados])
-                df_novo.to_sql('pacientes', conn, if_exists='append', index=False)
+                df_novo.to_sql('fichas_completas_v2', conn, if_exists='append', index=False)
                 
                 st.success("✅ Ficha enviada com sucesso! A Dra. Vanessa Mendonça e nossa equipe agradecem.")
                 st.balloons()
@@ -262,7 +283,7 @@ else:
         st.success("Acesso Autorizado - Dra. Vanessa")
         
         try:
-            df = pd.read_sql_query("SELECT * FROM pacientes ORDER BY rowid DESC", conn)
+            df = pd.read_sql_query("SELECT * FROM fichas_completas_v2 ORDER BY rowid DESC", conn)
             
             if not df.empty:
                 st.write(f"**Fichas recebidas:** {len(df)}")
@@ -270,16 +291,16 @@ else:
                 
                 csv = df.to_csv(index=False).encode('utf-8')
                 st.download_button(
-                    label="📥 Exportar Banco de Dados (CSV)",
+                    label="📥 Exportar Banco de Dados Completo (CSV)",
                     data=csv,
-                    file_name='banco_anamnese_guararapes.csv',
+                    file_name='banco_anamnese_guararapes_v2.csv',
                     mime='text/csv',
                     use_container_width=True
                 )
             else:
                 st.info("Nenhuma ficha registrada ainda.")
         except Exception as e:
-            st.info("O banco de dados ainda está vazio.")
+            st.info("O banco de dados está vazio. Aguardando o primeiro preenchimento da nova versão.")
             
     elif senha:
         st.error("Senha incorreta.")
