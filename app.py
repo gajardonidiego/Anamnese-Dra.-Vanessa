@@ -5,7 +5,7 @@ import re
 import time
 import uuid
 from fpdf import FPDF
-from sqlalchemy import create_engine, text, MetaData, Table, Column, String, Integer
+from supabase import create_client, Client
 
 # Configuração da Página
 st.set_page_config(page_title="Ficha de Anamnese - Dra. Vanessa Mendonça", page_icon="🦷", layout="centered")
@@ -31,72 +31,14 @@ st.markdown("""
 def limpa_numeros(texto):
     return re.sub(r'\D', '', texto)
 
-# Conexão e Garantia da Tabela no Supabase
+# Conexão Oficial com o Supabase via Secrets
 @st.cache_resource
-def get_engine_and_table():
-    db_url = st.secrets["DATABASE_URL"]
-    if db_url.startswith("postgres://"):
-        db_url = db_url.replace("postgres://", "postgresql://", 1)
-    
-    eng = create_engine(db_url)
-    
-    # Criação automática da tabela na nuvem se ela não existir
-    metadata = MetaData()
-    Table(
-        'fichas_nuvem', metadata,
-        Column('ID_Ficha', String, primary_key=True),
-        Column('Data_Envio', String),
-        Column('Nome', String),
-        Column('Data_Nascimento', String),
-        Column('Idade', Integer),
-        Column('Telefone', String),
-        Column('CPF', String),
-        Column('RG', String),
-        Column('Endereco', String),
-        Column('Motivo_Consulta', String),
-        Column('Tratamento_Medico_Atual', String),
-        Column('Condicao_Sendo_Tratada', String),
-        Column('Medico_e_Telefone', String),
-        Column('Ultimo_Exame_Medico', String),
-        Column('Ultimo_Dentista', String),
-        Column('Range_Dentes', String),
-        Column('Aperta_Dentes', String),
-        Column('Dificuldade_Abrir_Boca', String),
-        Column('Fuma', String),
-        Column('Bebe', String),
-        Column('Doencas_Previas', String),
-        Column('Detalhes_Doencas', String),
-        Column('Usa_Medicamentos', String),
-        Column('Quais_Medicamentos', String),
-        Column('Sangramento_Anormal', String),
-        Column('Hematomas_Frequentes', String),
-        Column('Transfusao_Sanguinea', String),
-        Column('Reacao_Anestesico', String),
-        Column('Problema_Odonto_Anterior', String),
-        Column('Detalhe_Problema_Odonto', String),
-        Column('Alergia_Medicamentos', String),
-        Column('Qual_Alergia_Med', String),
-        Column('Outra_Alergia', String),
-        Column('Qual_Outra_Alergia', String),
-        Column('Tipo_Sanguineo', String),
-        Column('Hospitalizado_5_Anos', String),
-        Column('Motivo_Hospitalizacao', String),
-        Column('Cirurgia_Importante', String),
-        Column('Qual_Cirurgia', String),
-        Column('Outras_Condicoes_Saude', String),
-        Column('Sexo_Biologico', String),
-        Column('Toma_Anticoncepcional', String),
-        Column('Gravida', String),
-        Column('Amamentando', String),
-        Column('Menopausa', String),
-        Column('Acompanhamento_Gineco', String),
-        Column('Responsavel_Legal', String),
-        Column('CPF_Responsavel', String)
-    )
-    metadata.create_all(eng)
-    return eng
+def init_supabase() -> Client:
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
 
-engine = get_engine_and_table()
+supabase = init_supabase()
 query_params = st.query_params
 is_admin = query_params.get("admin", "") == "true"
 
@@ -136,77 +78,77 @@ def gerar_pdf(paciente):
         pdf.write(5, c(str(value)) + "\n")
 
     section("1. IDENTIFICAÇÃO DO PACIENTE")
-    field("Data do Preenchimento: ", paciente['Data_Envio'])
-    field("Nome: ", paciente['Nome'])
-    field("Data de Nascimento: ", paciente['Data_Nascimento'])
-    field("Idade: ", paciente['Idade'])
-    field("Telefone: ", paciente['Telefone'])
-    field("CPF: ", paciente['CPF'])
-    field("RG: ", paciente['RG'])
-    field("Endereço: ", paciente['Endereco'])
+    field("Data do Preenchimento: ", paciente.get('Data_Envio'))
+    field("Nome: ", paciente.get('Nome'))
+    field("Data de Nascimento: ", paciente.get('Data_Nascimento'))
+    field("Idade: ", paciente.get('Idade'))
+    field("Telefone: ", paciente.get('Telefone'))
+    field("CPF: ", paciente.get('CPF'))
+    field("RG: ", paciente.get('RG'))
+    field("Endereço: ", paciente.get('Endereco'))
     
     section("2. MOTIVO DA CONSULTA")
-    field("Queixa Principal: ", paciente['Motivo_Consulta'])
+    field("Queixa Principal: ", paciente.get('Motivo_Consulta'))
     
     section("3. INFORMAÇÕES MÉDICAS GERAIS")
-    field("Em tratamento médico? ", paciente['Tratamento_Medico_Atual'])
-    field("Condição tratada: ", paciente['Condicao_Sendo_Tratada'])
-    field("Médico e Telefone: ", paciente['Medico_e_Telefone'])
-    field("Último Exame Físico: ", paciente['Ultimo_Exame_Medico'])
-    field("Último Tratamento Dentário: ", paciente['Ultimo_Dentista'])
+    field("Em tratamento médico? ", paciente.get('Tratamento_Medico_Atual'))
+    field("Condição tratada: ", paciente.get('Condicao_Sendo_Tratada'))
+    field("Médico e Telefone: ", paciente.get('Medico_e_Telefone'))
+    field("Último Exame Físico: ", paciente.get('Ultimo_Exame_Medico'))
+    field("Último Tratamento Dentário: ", paciente.get('Ultimo_Dentista'))
     
     section("4. HÁBITOS E FUNÇÃO ORAL")
-    field("Range os dentes: ", paciente['Range_Dentes'])
-    field("Aperta os dentes: ", paciente['Aperta_Dentes'])
-    field("Dificuldade para abrir a boca: ", paciente['Dificuldade_Abrir_Boca'])
-    field("Fuma: ", paciente['Fuma'])
-    field("Bebe: ", paciente['Bebe'])
+    field("Range os dentes: ", paciente.get('Range_Dentes'))
+    field("Aperta os dentes: ", paciente.get('Aperta_Dentes'))
+    field("Dificuldade para abrir a boca: ", paciente.get('Dificuldade_Abrir_Boca'))
+    field("Fuma: ", paciente.get('Fuma'))
+    field("Bebe: ", paciente.get('Bebe'))
     
     section("5. HISTÓRICO DE SAÚDE")
-    field("Doenças Prévias: ", paciente['Doencas_Previas'])
-    field("Detalhes das Doenças: ", paciente['Detalhes_Doencas'])
+    field("Doenças Prévias: ", paciente.get('Doencas_Previas'))
+    field("Detalhes das Doenças: ", paciente.get('Detalhes_Doencas'))
     
     section("6. MEDICAMENTOS")
-    field("Usa medicamentos? ", paciente['Usa_Medicamentos'])
-    field("Quais: ", paciente['Quais_Medicamentos'])
+    field("Usa medicamentos? ", paciente.get('Usa_Medicamentos'))
+    field("Quais: ", paciente.get('Quais_Medicamentos'))
     
     section("7. SANGRAMENTOS E INTERCORRÊNCIAS")
-    field("Sangramento Anormal: ", paciente['Sangramento_Anormal'])
-    field("Hematomas: ", paciente['Hematomas_Frequentes'])
-    field("Transfusão Sanguínea: ", paciente['Transfusao_Sanguinea'])
-    field("Reação a Anestésicos: ", paciente['Reacao_Anestesico'])
-    field("Problema Odontológico Anterior: ", paciente['Problema_Odonto_Anterior'])
-    field("Detalhes do Problema: ", paciente['Detalhe_Problema_Odonto'])
+    field("Sangramento Anormal: ", paciente.get('Sangramento_Anormal'))
+    field("Hematomas: ", paciente.get('Hematomas_Frequentes'))
+    field("Transfusão Sanguínea: ", paciente.get('Transfusao_Sanguinea'))
+    field("Reação a Anestésicos: ", paciente.get('Reacao_Anestesico'))
+    field("Problema Odontológico Anterior: ", paciente.get('Problema_Odonto_Anterior'))
+    field("Detalhes do Problema: ", paciente.get('Detalhe_Problema_Odonto'))
     
     section("8. ALERGIAS")
-    field("Alergia a Medicamentos: ", paciente['Alergia_Medicamentos'])
-    field("Qual Medicamento: ", paciente['Qual_Alergia_Med'])
-    field("Outra Alergia: ", paciente['Outra_Alergia'])
-    field("Qual Outra Alergia: ", paciente['Qual_Outra_Alergia'])
+    field("Alergia a Medicamentos: ", paciente.get('Alergia_Medicamentos'))
+    field("Qual Medicamento: ", paciente.get('Qual_Alergia_Med'))
+    field("Outra Alergia: ", paciente.get('Outra_Alergia'))
+    field("Qual Outra Alergia: ", paciente.get('Qual_Outra_Alergia'))
     
     section("9. INFORMAÇÕES COMPLEMENTARES")
-    field("Tipo Sanguíneo: ", paciente['Tipo_Sanguineo'])
-    field("Hospitalizado nos últimos 5 anos: ", paciente['Hospitalizado_5_Anos'])
-    field("Motivo Hospitalização: ", paciente['Motivo_Hospitalizacao'])
-    field("Cirurgia Importante: ", paciente['Cirurgia_Importante'])
-    field("Qual Cirurgia: ", paciente['Qual_Cirurgia'])
-    field("Outras Condições: ", paciente['Outras_Condicoes_Saude'])
+    field("Tipo Sanguíneo: ", paciente.get('Tipo_Sanguineo'))
+    field("Hospitalizado nos últimos 5 anos: ", paciente.get('Hospitalizado_5_Anos'))
+    field("Motivo Hospitalização: ", paciente.get('Motivo_Hospitalizacao'))
+    field("Cirurgia Importante: ", paciente.get('Cirurgia_Importante'))
+    field("Qual Cirurgia: ", paciente.get('Qual_Cirurgia'))
+    field("Outras Condições: ", paciente.get('Outras_Condicoes_Saude'))
     
     section("10. QUESTIONÁRIO FEMININO")
-    field("Sexo Biológico: ", paciente['Sexo_Biologico'])
-    if paciente['Sexo_Biologico'] == "Feminino":
-        field("Toma Anticoncepcional: ", paciente['Toma_Anticoncepcional'])
-        field("Grávida: ", paciente['Gravida'])
-        field("Amamentando: ", paciente['Amamentando'])
-        field("Menopausa: ", paciente['Menopausa'])
-        field("Acompanhamento Ginecológico: ", paciente['Acompanhamento_Gineco'])
+    field("Sexo Biológico: ", paciente.get('Sexo_Biologico'))
+    if paciente.get('Sexo_Biologico') == "Feminino":
+        field("Toma Anticoncepcional: ", paciente.get('Toma_Anticoncepcional'))
+        field("Grávida: ", paciente.get('Gravida'))
+        field("Amamentando: ", paciente.get('Amamentando'))
+        field("Menopausa: ", paciente.get('Menopausa'))
+        field("Acompanhamento Ginecológico: ", paciente.get('Acompanhamento_Gineco'))
         
     section("ASSINATURA E RESPONSABILIDADE")
     pdf.set_font("Arial", '', 9)
     pdf.multi_cell(0, 5, txt=c("Declaro que todas as informações acima são verdadeiras e completas, assumindo total responsabilidade por sua veracidade."))
     pdf.ln(3)
-    field("Responsável Legal: ", paciente['Responsavel_Legal'])
-    field("CPF Responsável: ", paciente['CPF_Responsável'])
+    field("Responsável Legal: ", paciente.get('Responsavel_Legal'))
+    field("CPF Responsável: ", paciente.get('CPF_Responsavel'))
     
     pdf.ln(10)
     pdf.line(55, pdf.get_y(), 155, pdf.get_y())
@@ -410,11 +352,12 @@ if not is_admin:
                 "CPF_Responsavel": limpa_numeros(cpf_resp)
             }
             
-            df_novo = pd.DataFrame([dados])
-            df_novo.to_sql('fichas_nuvem', engine, if_exists='append', index=False)
-            
-            st.success("✅ Ficha enviada com sucesso! A Dra. Vanessa Mendonça e nossa equipe agradecem.")
-            st.balloons()
+            try:
+                supabase.table("fichas_nuvem").insert(dados).execute()
+                st.success("✅ Ficha enviada com sucesso! A Dra. Vanessa Mendonça e nossa equipe agradecem.")
+                st.balloons()
+            except Exception as e:
+                st.error(f"Erro ao salvar na nuvem. Verifique se a tabela 'fichas_nuvem' foi criada no Supabase. Detalhe: {e}")
 
 else:
     # --- ÁREA DO MÉDICO ---
@@ -451,14 +394,19 @@ else:
                 st.rerun()
                 
         try:
-            df = pd.read_sql_query('SELECT * FROM "fichas_nuvem" ORDER BY "Data_Envio" DESC', engine)
+            response = supabase.table("fichas_nuvem").select("*").execute()
+            data = response.data
             
-            if not df.empty:
+            if data:
+                df = pd.DataFrame(data)
+                if "Data_Envio" in df.columns:
+                    df = df.sort_values(by="Data_Envio", ascending=False)
+                
                 lista_opcoes = ["📊 Visualizar Tabela Completa"] + [f"{row['Nome']} (Enviado em: {row['Data_Envio']})" for index, row in df.iterrows()]
                 selecao = st.selectbox("Selecione uma opção:", lista_opcoes)
                 
                 if selecao == "📊 Visualizar Tabela Completa":
-                    df_display = df.drop(columns=['ID_Ficha'])
+                    df_display = df.drop(columns=['ID_Ficha'], errors='ignore')
                     
                     st.write(f"**Total de pacientes registrados:** {len(df_display)}")
                     st.dataframe(df_display, use_container_width=True)
@@ -501,10 +449,7 @@ else:
                             
                             if btn_excluir:
                                 if senha_exclusao == "vanessa2026" and palavra_exclusao == "EXCLUIR":
-                                    with engine.connect() as conexao:
-                                        conexao.execute(text('DELETE FROM "fichas_nuvem" WHERE "ID_Ficha" = :id'), {"id": paciente_dados['ID_Ficha']})
-                                        conexao.commit()
-                                    
+                                    supabase.table("fichas_nuvem").delete().eq("ID_Ficha", paciente_dados['ID_Ficha']).execute()
                                     st.success("✅ Ficha excluída com sucesso! Atualizando painel...")
                                     time.sleep(2)
                                     st.rerun()
@@ -512,6 +457,6 @@ else:
                                     st.error("❌ Erro: Senha incorreta ou palavra de segurança inválida (digite EXCLUIR em maiúsculas).")
                                     
             else:
-                st.info("Nenhuma ficha registrada ainda.")
+                st.info("Nenhuma ficha registrada na nuvem ainda.")
         except Exception as e:
-            st.info(f"O banco de dados na nuvem está configurado. Detalhes: {e}")
+            st.info(f"Aguardando dados da nuvem. Detalhe: {e}")
