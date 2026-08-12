@@ -3,48 +3,32 @@ import sqlite3
 import pandas as pd
 from datetime import datetime
 import re
+from fpdf import FPDF
 
 # Configuração da Página
 st.set_page_config(page_title="Ficha de Anamnese - Dra. Vanessa Mendonça", page_icon="🦷", layout="centered")
 
-# Estilos Personalizados (Azul, Dourado e Cinza) + Botão Destacado
+# Estilos Personalizados
 st.markdown("""
     <style>
         :root { --azul: #1B365D; --dourado: #D4AF37; --cinza: #F0F2F5; }
         .stApp { background-color: var(--cinza); }
         h1, h2, h3, h4, h5, h6, p, label { color: var(--azul) !important; }
-        
-        /* SUPER DESTAQUE PARA O BOTÃO PRINCIPAL DE ENVIAR */
         .stButton > button[kind="primary"] {
-            background-color: var(--dourado) !important;
-            color: var(--azul) !important;
-            font-size: 20px !important;
-            font-weight: 900 !important;
-            padding: 25px !important;
-            border-radius: 12px !important;
-            border: 2px solid var(--azul) !important;
-            box-shadow: 0 6px 12px rgba(0,0,0,0.2) !important;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-top: 20px;
+            background-color: var(--dourado) !important; color: var(--azul) !important; font-size: 20px !important;
+            font-weight: 900 !important; padding: 25px !important; border-radius: 12px !important;
+            border: 2px solid var(--azul) !important; box-shadow: 0 6px 12px rgba(0,0,0,0.2) !important; text-transform: uppercase; margin-top: 20px;
         }
-        .stButton > button[kind="primary"]:hover {
-            background-color: #E6C657 !important;
-            transform: scale(1.02);
-            box-shadow: 0 8px 16px rgba(0,0,0,0.3) !important;
-        }
-        
+        .stButton > button[kind="primary"]:hover { background-color: #E6C657 !important; transform: scale(1.02); box-shadow: 0 8px 16px rgba(0,0,0,0.3) !important; }
         .header-box { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; border-top: 5px solid var(--dourado); margin-bottom: 30px; }
         .header-title { color: var(--azul); font-size: 24px; font-weight: bold; margin-bottom: 5px; }
         .header-subtitle { color: #555; font-size: 16px; }
     </style>
 """, unsafe_allow_html=True)
 
-# Função para limpar caracteres e deixar só números
 def limpa_numeros(texto):
     return re.sub(r'\D', '', texto)
 
-# Inicialização do Banco de Dados
 @st.cache_resource
 def get_db_connection():
     return sqlite3.connect('anamnese_guararapes.db', check_same_thread=False)
@@ -52,6 +36,125 @@ def get_db_connection():
 conn = get_db_connection()
 query_params = st.query_params
 is_admin = query_params.get("admin", "") == "true"
+
+# --- FUNÇÃO PARA GERAR O PDF IDÊNTICO À FICHA FÍSICA ---
+def gerar_pdf(paciente):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    
+    # Tratamento de caracteres em português para o PDF
+    def c(text):
+        return str(text).encode('latin-1', 'replace').decode('latin-1')
+        
+    # Cabeçalho Físico
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 8, txt=c("CONSULTÓRIO ODONTOLÓGICO GUARARAPES"), ln=True, align='C')
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(0, 5, txt=c("Dra. Vanessa Mendonça - Cirurgiã Dentista | CROSP: 107.045"), ln=True, align='C')
+    pdf.set_font("Arial", '', 9)
+    pdf.cell(0, 5, txt=c("Avenida Rio Branco 832, Centro, Guararapes, SP | Tel: (18) 3606-0509"), ln=True, align='C')
+    pdf.line(10, pdf.get_y()+2, 200, pdf.get_y()+2)
+    pdf.ln(7)
+    
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 8, txt=c("FICHA DE ANAMNESE CLINICA"), ln=True, align='C')
+    pdf.ln(3)
+    
+    def section(title):
+        pdf.ln(3)
+        pdf.set_font("Arial", 'B', 10)
+        pdf.set_fill_color(230, 230, 230)
+        pdf.cell(0, 6, txt=c(title), ln=True, fill=True)
+        pdf.ln(2)
+        
+    def field(label, value):
+        pdf.set_font("Arial", 'B', 9)
+        pdf.write(5, c(label))
+        pdf.set_font("Arial", '', 9)
+        pdf.write(5, c(str(value)) + "\n")
+
+    section("1. IDENTIFICAÇÃO DO PACIENTE")
+    field("Data do Preenchimento: ", paciente['Data_Envio'])
+    field("Nome: ", paciente['Nome'])
+    field("Data de Nascimento: ", paciente['Data_Nascimento'])
+    field("Idade: ", paciente['Idade'])
+    field("Telefone: ", paciente['Telefone'])
+    field("CPF: ", paciente['CPF'])
+    field("RG: ", paciente['RG'])
+    field("Endereço: ", paciente['Endereco'])
+    
+    section("2. MOTIVO DA CONSULTA")
+    field("Queixa Principal: ", paciente['Motivo_Consulta'])
+    
+    section("3. INFORMAÇÕES MÉDICAS GERAIS")
+    field("Em tratamento médico? ", paciente['Tratamento_Medico_Atual'])
+    field("Condição tratada: ", paciente['Condicao_Sendo_Tratada'])
+    field("Médico e Telefone: ", paciente['Medico_e_Telefone'])
+    field("Último Exame Físico: ", paciente['Ultimo_Exame_Medico'])
+    field("Último Tratamento Dentário: ", paciente['Ultimo_Dentista'])
+    
+    section("4. HÁBITOS E FUNÇÃO ORAL")
+    field("Range os dentes: ", paciente['Range_Dentes'])
+    field("Aperta os dentes: ", paciente['Aperta_Dentes'])
+    field("Dificuldade para abrir a boca: ", paciente['Dificuldade_Abrir_Boca'])
+    field("Fuma: ", paciente['Fuma'])
+    field("Bebe: ", paciente['Bebe'])
+    
+    section("5. HISTÓRICO DE SAÚDE")
+    field("Doenças Prévias: ", paciente['Doencas_Previas'])
+    field("Detalhes das Doenças: ", paciente['Detalhes_Doencas'])
+    
+    section("6. MEDICAMENTOS")
+    field("Usa medicamentos? ", paciente['Usa_Medicamentos'])
+    field("Quais: ", paciente['Quais_Medicamentos'])
+    
+    section("7. SANGRAMENTOS E INTERCORRÊNCIAS")
+    field("Sangramento Anormal: ", paciente['Sangramento_Anormal'])
+    field("Hematomas: ", paciente['Hematomas_Frequentes'])
+    field("Transfusão Sanguínea: ", paciente['Transfusao_Sanguinea'])
+    field("Reação a Anestésicos: ", paciente['Reacao_Anestesico'])
+    field("Problema Odontológico Anterior: ", paciente['Problema_Odonto_Anterior'])
+    field("Detalhes do Problema: ", paciente['Detalhe_Problema_Odonto'])
+    
+    section("8. ALERGIAS")
+    field("Alergia a Medicamentos: ", paciente['Alergia_Medicamentos'])
+    field("Qual Medicamento: ", paciente['Qual_Alergia_Med'])
+    field("Outra Alergia: ", paciente['Outra_Alergia'])
+    field("Qual Outra Alergia: ", paciente['Qual_Outra_Alergia'])
+    
+    section("9. INFORMAÇÕES COMPLEMENTARES")
+    field("Tipo Sanguíneo: ", paciente['Tipo_Sanguineo'])
+    field("Hospitalizado nos últimos 5 anos: ", paciente['Hospitalizado_5_Anos'])
+    field("Motivo Hospitalização: ", paciente['Motivo_Hospitalizacao'])
+    field("Cirurgia Importante: ", paciente['Cirurgia_Importante'])
+    field("Qual Cirurgia: ", paciente['Qual_Cirurgia'])
+    field("Outras Condições: ", paciente['Outras_Condicoes_Saude'])
+    
+    section("10. QUESTIONÁRIO FEMININO")
+    field("Sexo Biológico: ", paciente['Sexo_Biologico'])
+    if paciente['Sexo_Biologico'] == "Feminino":
+        field("Toma Anticoncepcional: ", paciente['Toma_Anticoncepcional'])
+        field("Grávida: ", paciente['Gravida'])
+        field("Amamentando: ", paciente['Amamentando'])
+        field("Menopausa: ", paciente['Menopausa'])
+        field("Acompanhamento Ginecológico: ", paciente['Acompanhamento_Gineco'])
+        
+    section("ASSINATURA E RESPONSABILIDADE")
+    pdf.set_font("Arial", '', 9)
+    pdf.multi_cell(0, 5, txt=c("Declaro que todas as informações acima são verdadeiras e completas, assumindo total responsabilidade por sua veracidade."))
+    pdf.ln(3)
+    field("Responsável Legal: ", paciente['Responsavel_Legal'])
+    field("CPF Responsável: ", paciente['CPF_Responsavel'])
+    
+    pdf.ln(10)
+    pdf.line(55, pdf.get_y(), 155, pdf.get_y())
+    pdf.ln(2)
+    pdf.set_font("Arial", '', 9)
+    pdf.cell(0, 5, txt=c("Assinatura Eletrônica do Paciente / Responsável"), ln=True, align='C')
+
+    return pdf.output(dest='S').encode('latin-1')
+
 
 if not is_admin:
     # --- ÁREA DO PACIENTE ---
@@ -73,8 +176,6 @@ if not is_admin:
     with col1: 
         hoje = datetime.today()
         data_nasc = st.date_input("Data de nascimento *", min_value=datetime(1900, 1, 1), max_value=hoje, format="DD/MM/YYYY")
-        
-        # Cálculo automático reativo
         idade_calc = hoje.year - data_nasc.year - ((hoje.month, hoje.day) < (data_nasc.month, data_nasc.day))
         st.info(f"Idade calculada: **{idade_calc} anos**")
         
@@ -164,9 +265,7 @@ if not is_admin:
     st.subheader("10. PARA PACIENTES DO SEXO FEMININO")
     sexo = st.radio("Sexo biológico *", ["Masculino", "Feminino"], index=None)
     
-    # Lógica de Habilitar/Desabilitar baseada na resposta reativa
     is_female = (sexo == "Feminino")
-    
     anticoncepcional = st.text_input("Toma anticoncepcional? Qual?", disabled=not is_female)
     gravida = st.radio("Está ou pode estar grávida?", ["Não", "Sim"], disabled=not is_female, index=0 if is_female else None)
     amamentando = st.radio("Está amamentando?", ["Não", "Sim"], disabled=not is_female, index=0 if is_female else None)
@@ -175,13 +274,12 @@ if not is_admin:
         
     st.markdown("---")
     st.subheader("DECLARAÇÃO DE RESPONSABILIDADE E CIÊNCIA")
-    st.info("Declaro que todas as informações acima são verdadeiras e completas, assumindo total responsabilidade por sua veracidade. Comprometo-me a informar imediatamente qualquer alteração em meu estado de saúde. Autorizo, em caso de urgência, a adoção das medidas necessárias à preservação de minha saúde.")
+    st.info("Declaro que todas as informações acima são verdadeiras e completas, assumindo total responsabilidade por sua veracidade. Comprometo-me a informar imediatamente qualquer alteração em meu estado de saúde.")
     
     aceite = st.checkbox("Li, compreendi e concordo com a declaração acima. *", value=False)
     resp_legal = st.text_input("Nome do Responsável Legal (apenas se paciente for menor/incapaz)")
     cpf_resp = st.text_input("CPF do Responsável")
     
-    # O botão agora fica fora do form, acionando a validação direto
     submit = st.button("Assinar e Enviar Ficha de Anamnese", type="primary", use_container_width=True)
     
     if submit:
@@ -257,7 +355,7 @@ if not is_admin:
             st.balloons()
 
 else:
-    # --- ÁREA DO MÉDICO ---
+    # --- ÁREA DO MÉDICO (NOVA ESTRUTURA) ---
     st.markdown('''
         <div class="header-box">
             <div class="header-title">PAINEL CLÍNICO</div>
@@ -274,17 +372,42 @@ else:
             df = pd.read_sql_query("SELECT * FROM fichas_completas_v2 ORDER BY rowid DESC", conn)
             
             if not df.empty:
-                st.write(f"**Fichas recebidas:** {len(df)}")
-                st.dataframe(df, use_container_width=True)
+                # Caixa de Seleção Dinâmica
+                lista_opcoes = ["📊 Visualizar Tabela Completa"] + [f"{row['Nome']} (Enviado em: {row['Data_Envio']})" for index, row in df.iterrows()]
+                selecao = st.selectbox("Selecione uma opção:", lista_opcoes)
                 
-                csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Exportar Banco de Dados Completo (CSV)",
-                    data=csv,
-                    file_name='banco_anamnese_guararapes_v2.csv',
-                    mime='text/csv',
-                    use_container_width=True
-                )
+                if selecao == "📊 Visualizar Tabela Completa":
+                    st.write(f"**Total de pacientes registrados:** {len(df)}")
+                    st.dataframe(df, use_container_width=True)
+                    
+                    # Correção do Excel: Formato pt-BR com separador ';' e codificação utf-8-sig
+                    csv = df.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
+                    st.download_button(
+                        label="📥 Baixar Planilha Excel Correta (CSV)",
+                        data=csv,
+                        file_name='banco_anamnese_guararapes.csv',
+                        mime='text/csv',
+                        use_container_width=True
+                    )
+                else:
+                    # Paciente Específico Selecionado
+                    indice_paciente = lista_opcoes.index(selecao) - 1
+                    paciente_dados = df.iloc[indice_paciente]
+                    
+                    st.markdown("---")
+                    st.write(f"**Ficha selecionada:** {paciente_dados['Nome']}")
+                    st.write(f"**Motivo da Consulta:** {paciente_dados['Motivo_Consulta']}")
+                    
+                    # Botão para gerar o PDF
+                    pdf_bytes = gerar_pdf(paciente_dados)
+                    st.download_button(
+                        label=f"📄 Gerar e Baixar PDF de {paciente_dados['Nome']}",
+                        data=pdf_bytes,
+                        file_name=f"Anamnese_{paciente_dados['Nome']}.pdf",
+                        mime='application/pdf',
+                        type="primary",
+                        use_container_width=True
+                    )
             else:
                 st.info("Nenhuma ficha registrada ainda.")
         except Exception as e:
