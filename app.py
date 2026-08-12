@@ -1,10 +1,11 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
 from datetime import datetime
 import re
 import time
+import uuid
 from fpdf import FPDF
+from sqlalchemy import create_engine, text
 
 # Configuração da Página
 st.set_page_config(page_title="Ficha de Anamnese - Dra. Vanessa Mendonça", page_icon="🦷", layout="centered")
@@ -30,11 +31,16 @@ st.markdown("""
 def limpa_numeros(texto):
     return re.sub(r'\D', '', texto)
 
+# Conexão com o Supabase via Segredos do Streamlit
 @st.cache_resource
-def get_db_connection():
-    return sqlite3.connect('anamnese_guararapes.db', check_same_thread=False)
+def get_engine():
+    db_url = st.secrets["DATABASE_URL"]
+    # Garante que a URL comece com postgresql:// (padrão exigido pelo SQLAlchemy)
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    return create_engine(db_url)
 
-conn = get_db_connection()
+engine = get_engine()
 query_params = st.query_params
 is_admin = query_params.get("admin", "") == "true"
 
@@ -44,8 +50,8 @@ def gerar_pdf(paciente):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
-    def c(text):
-        return str(text).encode('latin-1', 'replace').decode('latin-1')
+    def c(texto):
+        return str(texto).encode('latin-1', 'replace').decode('latin-1')
         
     pdf.set_font("Arial", 'B', 14)
     pdf.cell(0, 8, txt=c("CONSULTÓRIO ODONTOLÓGICO GUARARAPES"), ln=True, align='C')
@@ -298,6 +304,7 @@ if not is_admin:
             st.error("⚠️ Você deve concordar com a Declaração de Responsabilidade para enviar a ficha.")
         else:
             dados = {
+                "ID_Ficha": str(uuid.uuid4()),
                 "Data_Envio": datetime.now().strftime("%d/%m/%Y %H:%M"),
                 "Nome": nome,
                 "Data_Nascimento": str(data_nasc),
@@ -348,7 +355,7 @@ if not is_admin:
             }
             
             df_novo = pd.DataFrame([dados])
-            df_novo.to_sql('fichas_completas_v2', conn, if_exists='append', index=False)
+            df_novo.to_sql('fichas_nuvem', engine, if_exists='append', index=False)
             
             st.success("✅ Ficha enviada com sucesso! A Dra. Vanessa Mendonça e nossa equipe agradecem.")
             st.balloons()
@@ -356,7 +363,6 @@ if not is_admin:
 else:
     # --- ÁREA DO MÉDICO ---
     
-    # Controle de Sessão para Login
     if 'autenticado' not in st.session_state:
         st.session_state.autenticado = False
 
@@ -368,7 +374,6 @@ else:
     ''', unsafe_allow_html=True)
     
     if not st.session_state.autenticado:
-        # Formulário de Login Seguro e Visível
         with st.form("login_form"):
             st.markdown("### 🔒 Acesso Restrito")
             senha = st.text_input("Senha de Acesso:", type="password", placeholder="Digite a senha do painel...")
@@ -381,7 +386,6 @@ else:
                 else:
                     st.error("❌ Senha incorreta.")
     else:
-        # Sistema Logado
         col1, col2 = st.columns([0.8, 0.2])
         with col1:
             st.success("✅ Acesso Autorizado - Dra. Vanessa")
@@ -391,16 +395,15 @@ else:
                 st.rerun()
                 
         try:
-            # Busca do Banco de Dados com o ID da linha (rowid) necessário para a exclusão
-            df = pd.read_sql_query("SELECT rowid, * FROM fichas_completas_v2 ORDER BY rowid DESC", conn)
+            # Puxa do Supabase
+            df = pd.read_sql_query('SELECT * FROM "fichas_nuvem" ORDER BY "Data_Envio" DESC', engine)
             
             if not df.empty:
                 lista_opcoes = ["📊 Visualizar Tabela Completa"] + [f"{row['Nome']} (Enviado em: {row['Data_Envio']})" for index, row in df.iterrows()]
                 selecao = st.selectbox("Selecione uma opção:", lista_opcoes)
                 
                 if selecao == "📊 Visualizar Tabela Completa":
-                    # Remove a coluna técnica rowid da visualização e do Excel
-                    df_display = df.drop(columns=['rowid'])
+                    df_display = df.drop(columns=['ID_Ficha'])
                     
                     st.write(f"**Total de pacientes registrados:** {len(df_display)}")
                     st.dataframe(df_display, use_container_width=True)
@@ -414,7 +417,6 @@ else:
                         use_container_width=True
                     )
                 else:
-                    # Paciente Selecionado
                     indice_paciente = lista_opcoes.index(selecao) - 1
                     paciente_dados = df.iloc[indice_paciente]
                     
@@ -422,7 +424,6 @@ else:
                     st.write(f"**Ficha selecionada:** {paciente_dados['Nome']}")
                     st.write(f"**Motivo da Consulta:** {paciente_dados['Motivo_Consulta']}")
                     
-                    # Gerador de PDF
                     pdf_bytes = gerar_pdf(paciente_dados)
                     st.download_button(
                         label=f"📄 Gerar e Baixar PDF de {paciente_dados['Nome']}",
@@ -434,9 +435,8 @@ else:
                     )
                     
                     st.markdown("---")
-                    # Sistema de Exclusão Segura
                     with st.expander("🗑️ Excluir Ficha (Ação Irreversível)"):
-                        st.warning(f"Você está prestes a excluir permanentemente a ficha de **{paciente_dados['Nome']}**.")
+                        st.warning(f"Você está prestes a excluir permanentemente a ficha de **{paciente_dados['Nome']}** da nuvem.")
                         
                         with st.form("form_exclusao"):
                             senha_exclusao = st.text_input("Confirme a senha do painel:", type="password")
@@ -446,10 +446,9 @@ else:
                             
                             if btn_excluir:
                                 if senha_exclusao == "vanessa2026" and palavra_exclusao == "EXCLUIR":
-                                    cursor = conn.cursor()
-                                    # Executa a exclusão pelo ID único gerado no SQLite
-                                    cursor.execute("DELETE FROM fichas_completas_v2 WHERE rowid = ?", (int(paciente_dados['rowid']),))
-                                    conn.commit()
+                                    with engine.connect() as conexao:
+                                        conexao.execute(text('DELETE FROM "fichas_nuvem" WHERE "ID_Ficha" = :id'), {"id": paciente_dados['ID_Ficha']})
+                                        conexao.commit()
                                     
                                     st.success("✅ Ficha excluída com sucesso! Atualizando painel...")
                                     time.sleep(2)
@@ -460,4 +459,4 @@ else:
             else:
                 st.info("Nenhuma ficha registrada ainda.")
         except Exception as e:
-            st.info("O banco de dados está vazio. Aguardando o primeiro preenchimento da nova versão.")
+            st.info("O banco de dados na nuvem está configurado e aguardando o primeiro preenchimento.")
