@@ -5,7 +5,7 @@ import re
 import time
 import uuid
 from fpdf import FPDF
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, MetaData, Table, Column, String, Integer
 
 # Configuração da Página
 st.set_page_config(page_title="Ficha de Anamnese - Dra. Vanessa Mendonça", page_icon="🦷", layout="centered")
@@ -31,16 +31,72 @@ st.markdown("""
 def limpa_numeros(texto):
     return re.sub(r'\D', '', texto)
 
-# Conexão com o Supabase via Segredos do Streamlit
+# Conexão e Garantia da Tabela no Supabase
 @st.cache_resource
-def get_engine():
+def get_engine_and_table():
     db_url = st.secrets["DATABASE_URL"]
-    # Garante que a URL comece com postgresql:// (padrão exigido pelo SQLAlchemy)
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
-    return create_engine(db_url)
+    
+    eng = create_engine(db_url)
+    
+    # Criação automática da tabela na nuvem se ela não existir
+    metadata = MetaData()
+    Table(
+        'fichas_nuvem', metadata,
+        Column('ID_Ficha', String, primary_key=True),
+        Column('Data_Envio', String),
+        Column('Nome', String),
+        Column('Data_Nascimento', String),
+        Column('Idade', Integer),
+        Column('Telefone', String),
+        Column('CPF', String),
+        Column('RG', String),
+        Column('Endereco', String),
+        Column('Motivo_Consulta', String),
+        Column('Tratamento_Medico_Atual', String),
+        Column('Condicao_Sendo_Tratada', String),
+        Column('Medico_e_Telefone', String),
+        Column('Ultimo_Exame_Medico', String),
+        Column('Ultimo_Dentista', String),
+        Column('Range_Dentes', String),
+        Column('Aperta_Dentes', String),
+        Column('Dificuldade_Abrir_Boca', String),
+        Column('Fuma', String),
+        Column('Bebe', String),
+        Column('Doencas_Previas', String),
+        Column('Detalhes_Doencas', String),
+        Column('Usa_Medicamentos', String),
+        Column('Quais_Medicamentos', String),
+        Column('Sangramento_Anormal', String),
+        Column('Hematomas_Frequentes', String),
+        Column('Transfusao_Sanguinea', String),
+        Column('Reacao_Anestesico', String),
+        Column('Problema_Odonto_Anterior', String),
+        Column('Detalhe_Problema_Odonto', String),
+        Column('Alergia_Medicamentos', String),
+        Column('Qual_Alergia_Med', String),
+        Column('Outra_Alergia', String),
+        Column('Qual_Outra_Alergia', String),
+        Column('Tipo_Sanguineo', String),
+        Column('Hospitalizado_5_Anos', String),
+        Column('Motivo_Hospitalizacao', String),
+        Column('Cirurgia_Importante', String),
+        Column('Qual_Cirurgia', String),
+        Column('Outras_Condicoes_Saude', String),
+        Column('Sexo_Biologico', String),
+        Column('Toma_Anticoncepcional', String),
+        Column('Gravida', String),
+        Column('Amamentando', String),
+        Column('Menopausa', String),
+        Column('Acompanhamento_Gineco', String),
+        Column('Responsavel_Legal', String),
+        Column('CPF_Responsavel', String)
+    )
+    metadata.create_all(eng)
+    return eng
 
-engine = get_engine()
+engine = get_engine_and_table()
 query_params = st.query_params
 is_admin = query_params.get("admin", "") == "true"
 
@@ -150,7 +206,7 @@ def gerar_pdf(paciente):
     pdf.multi_cell(0, 5, txt=c("Declaro que todas as informações acima são verdadeiras e completas, assumindo total responsabilidade por sua veracidade."))
     pdf.ln(3)
     field("Responsável Legal: ", paciente['Responsavel_Legal'])
-    field("CPF Responsável: ", paciente['CPF_Responsavel'])
+    field("CPF Responsável: ", paciente['CPF_Responsável'])
     
     pdf.ln(10)
     pdf.line(55, pdf.get_y(), 155, pdf.get_y())
@@ -395,7 +451,6 @@ else:
                 st.rerun()
                 
         try:
-            # Puxa do Supabase
             df = pd.read_sql_query('SELECT * FROM "fichas_nuvem" ORDER BY "Data_Envio" DESC', engine)
             
             if not df.empty:
@@ -459,4 +514,4 @@ else:
             else:
                 st.info("Nenhuma ficha registrada ainda.")
         except Exception as e:
-            st.info("O banco de dados na nuvem está configurado e aguardando o primeiro preenchimento.")
+            st.info(f"O banco de dados na nuvem está configurado. Detalhes: {e}")
